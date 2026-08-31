@@ -84,6 +84,11 @@ exist. `CustodyTest` asserts the two bodies are identical on every write.
   same cause for the same subject is a replay of what exists. Nothing was created.
 - The same cause for a **different** subject → **409** `cause_reference_claimed`. Never the first
   subject's row handed to this caller; that is wave 16's sharpest defect, one layer up.
+A 409 from a raise does **not** mean nothing was written. The domain's fan-out is not transactional,
+so a cause that collides on the third of five endpoints leaves the first two committed and owed. This
+surface reports the domain's answer rather than inventing a partial one; the runbook says what to
+check before retrying, and it is reported to the domain as a defect.
+
 - Nobody subscribes → **200** with an empty list. That is a success. An event with no subscriber is
   the ordinary state of most event names, and rendering it as a failure would have every caller
   alerting on nothing.

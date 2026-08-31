@@ -71,6 +71,22 @@ than answered with the first subject's delivery.
 shared — a batch id, a date, a constant — will collide the moment two subjects are in the same batch.
 Derive it from the occurrence: an order id, a refund id, an invoice number.
 
+### A 409 here can leave deliveries behind
+
+The fan-out is not wrapped in a transaction, so when a cause collides on the *third* of five
+subscribed endpoints, the deliveries raised for the first two are already committed and will be sent.
+The 409 reports a total failure that was partial, and the response names none of the rows that
+survived.
+
+**Check** `GET /deliveries?endpoint=…` for the cause reference after any 409 from a raise, before
+retrying. Retrying the same cause and the same subject is safe — the survivors come back
+`already_raised` — but retrying under a *corrected* cause reference raises a **second** set of
+deliveries for the endpoints that succeeded the first time, and the receiver gets the event twice
+under two references.
+
+This is a defect in the domain module, reported rather than papered over here: a surface that
+swallowed the 409 to report the partial set would be inventing a result the domain did not return.
+
 ## Raising an event returns an empty list
 
 **Not a fault.** Nothing subscribes to that name for that merchant. The response is 200 and the list
