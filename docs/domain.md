@@ -109,6 +109,34 @@ Two nulls in that payload are not absences:
   distinction as a field so no caller has to infer it.
 - **`attempt_id` is null only for `concurrent_attempt`**, which is the one refusal that writes no row.
 
+### A 409 is only as trustworthy as the domain's catch, so the common case never reaches it
+
+`AddEndpoint`, `RegisterExtension`, `RegisterEventName` and `Subscribe` each wrap their insert in a
+bare `catch (QueryException)` and rethrow it as "already registered". *Any* database fault at that
+insert — a value too wide for a column, an unexpected constraint, a connection fault — therefore
+arrives here dressed as a duplicate, and this surface would publish it as a 409.
+
+The answer is to keep the common case away from that catch. Every length this surface accepts is
+bounded to its column before the domain sees it: `extension_ref` 128, `name` 191, `url` 1024,
+`event_name` 128, `description` 191, and the payload by `payload.max_bytes` in **bytes**. Each is a
+422 naming the field. What is left reaching the catch is a real duplicate or an infrastructure fault,
+and only the second is mislabelled. Reported to the domain rather than worked around further: a
+catch that inspected the constraint name, or re-read before renaming the way `RaiseEvent` does, would
+close it.
+
+### `EndpointUrlIsInvalid` carries a reason, and this surface does not publish it
+
+`Support\Destination::refusalFor()` returns `DestinationIsNotHttps` for three different faults: a
+wrong scheme, a URL `parse_url` rejects outright, and a URL with no host at all. `https:///hook` is
+reported as "not https" when it is.
+
+The exception carries a public readonly `$reason` typed `RefusalReason`, so this package *could*
+publish `destination_not_https` against `destination_not_public` without parsing a message. It does
+not: a reason that is sometimes wrong is worse than one message that is always true, and a caller
+that branched on it would branch wrongly on a hostless URL. Every refused URL gets the same 422 with
+one message naming both real conditions, and `EndpointTest` asserts the three bodies are identical.
+A domain that separated the three faults into their own reasons would make the field publishable.
+
 ### A host that names a transport class that does not exist gets a 500, on purpose
 
 `Support\Seams::transport()` calls `App::make()` on the configured class name outside any try, and

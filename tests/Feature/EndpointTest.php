@@ -84,6 +84,66 @@ it('refuses a destination that is not https and one that resolves into private s
     }
 });
 
+/*
+ * `Destination::refusalFor()` reports `DestinationIsNotHttps` for three
+ * different faults — a wrong scheme, a URL `parse_url` rejects, and one with no
+ * host at all — so `https:///hook` comes back as "not https" when it is. The
+ * exception carries a typed `$reason` this surface could publish, and does not:
+ * a reason that is sometimes wrong is worse than one message that is always
+ * true. Every refused URL gets the same body.
+ */
+it('gives one answer for every URL the domain refuses, because the reason is not always right', function () {
+    $extension = (new RegisterExtension())('merchant-a', 'partner-1', 'A Partner');
+    $actor = actor([Scope::MANAGE]);
+    $bodies = [];
+
+    foreach (['http://203.0.113.10/hook', 'https:///hook', 'https://10.0.0.1/hook'] as $url) {
+        $response = $this->actingAs($actor)->postJson(api('endpoints'), [
+            'extension_id' => $extension->id,
+            'url' => $url,
+        ]);
+
+        $response->assertStatus(422);
+
+        $bodies[] = $response->json();
+    }
+
+    expect($bodies[0])->toBe($bodies[1])
+        ->and($bodies[1])->toBe($bodies[2])
+        ->and($bodies[0]['error'])->not->toHaveKey('reason');
+});
+
+/*
+ * Every length this surface accepts is bounded before the domain sees it, so a
+ * value too wide for a column is a 422 naming the field rather than a
+ * `QueryException` the domain catches and renames. `AddEndpoint`,
+ * `RegisterExtension`, `RegisterEventName` and `Subscribe` all catch that
+ * exception broadly and report a duplicate, so the 409 is only as trustworthy
+ * as the catch: keeping the common case away from it is this package's job.
+ */
+it('bounds every value it accepts before the domain writes it', function () {
+    $seed = seeded();
+    $actor = actor([Scope::MANAGE]);
+
+    $overlong = [
+        ['extensions', ['extension_ref' => str_repeat('a', 129), 'name' => 'A Partner'], 'extension_ref'],
+        ['extensions', ['extension_ref' => 'partner-2', 'name' => str_repeat('a', 192)], 'name'],
+        ['endpoints', ['extension_id' => $seed['extension_id'], 'url' => 'https://203.0.113.10/'.str_repeat('a', 1024)], 'url'],
+        ['event-names', ['name' => str_repeat('a', 129)], 'name'],
+        ['event-names', ['name' => 'order.shipped', 'description' => str_repeat('a', 192)], 'description'],
+        ["endpoints/{$seed['endpoint_id']}/subscriptions", ['event_name' => str_repeat('a', 129)], 'event_name'],
+    ];
+
+    foreach ($overlong as [$path, $payload, $field]) {
+        $response = $this->actingAs($actor)->postJson(api($path), $payload);
+
+        $response->assertStatus(422);
+
+        expect($response->json('error.code'))->toBe('validation_failed')
+            ->and($response->json('error.fields'))->toHaveKey($field);
+    }
+});
+
 it('answers the same 404 for an extension that is not yours and one nobody minted', function () {
     seeded('merchant-b');
     $actor = actor([Scope::MANAGE]);

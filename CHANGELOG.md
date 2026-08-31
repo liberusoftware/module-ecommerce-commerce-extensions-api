@@ -37,6 +37,13 @@ business rules of its own.
   a row rather than raising it. `no_transport_bound` is not a 503.
 - **A `duration_ms` is published only when the transport completed.** The module stores `0` for a
   request that threw, and a zero substituted for an unknown is a measurement nobody took.
+- **Every length is bounded before the domain writes it.** The domain catches every `QueryException`
+  at an insert and rethrows it as "already registered", so an over-wide value would reach a caller as
+  a 409. Bounding each field here makes it a 422 naming the field instead.
+- **`EndpointUrlIsInvalid` carries a typed reason and this surface does not publish it.**
+  `Destination::refusalFor()` reports "not https" for a wrong scheme, an unparseable URL and a
+  hostless one alike, so the reason is sometimes wrong. Every refused URL gets one message that is
+  always true.
 - **The clock is read once per request**, in the base controller, and shared by all six domain calls
   that take an instant.
 

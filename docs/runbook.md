@@ -55,6 +55,11 @@ on the old secret starts failing at that moment, which is the point.
 **Cause.** This extension already has an endpoint at that URL. The natural key is
 `(merchant, extension, url)`, and the index is the arbiter.
 
+**But check it is really a duplicate.** The domain catches every `QueryException` at that insert and
+rethrows it as "already registered", so an infrastructure fault reads as a conflict. If no endpoint
+at that URL exists under that extension, the 409 is a database problem wearing a conflict's clothes —
+look at the application log rather than at the request.
+
 **Fix.** If the intent was a retry after a lost response, rotate — the endpoint exists and its secret
 cannot be reissued. If the intent was a second destination, use a different URL, or register a second
 extension.
