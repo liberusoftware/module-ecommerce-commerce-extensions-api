@@ -1,84 +1,87 @@
-# Ecommerce: Commerce Extensions API
+# Commerce Extensions — HTTP API
 
-> This optional API presentation package exposes approved HTTP operations for the Commerce Extensions domain module. It presents exactly one independent module, delegates all authoritative behavior to that module's public actions/queries/policies, and contains no other module's API logic.
+An HTTP adapter over [`liberusoftware/ecommerce-commerce-extensions`](https://github.com/liberusoftware/module-ecommerce-commerce-extensions).
 
-[Software](https://liberusoftware.com) ·
-[Hosting](https://liberuhosting.com) ·
-[Services](https://liberuservices.com) ·
-[Liberu Group](https://liberugroup.com)
+It presents that module and no other, and it holds **no business rules**: every decision is delegated
+to the domain's published actions and queries. What this package owns is the transport — who is
+asking, what a domain refusal means over HTTP, and what leaves in a body.
 
-![PHP](https://img.shields.io/badge/PHP-8.5-777BB4?logo=php&logoColor=white) ![Laravel](https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white)
-[![Latest release](https://img.shields.io/github/v/release/liberusoftware/module-ecommerce-commerce-extensions-api?sort=semver)](https://github.com/liberusoftware/module-ecommerce-commerce-extensions-api/releases/latest) [![Tests](https://github.com/liberusoftware/module-ecommerce-commerce-extensions-api/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/liberusoftware/module-ecommerce-commerce-extensions-api/actions/workflows/tests.yml)
+## What it owns
 
-## Features
+| | |
+| --- | --- |
+| `routes/api.php` | Nineteen endpoints, mounted under a configurable prefix |
+| `src/Http/Scope.php` | Four abilities, and which of them may name a subject |
+| `src/Http/Failure.php` | One table from domain exception to status, code and classification |
+| `src/Http/Present.php` | The only place a domain object becomes JSON |
+| `src/Http/Controllers/Controller.php` | The actor, the merchant, the clock, and the exception mapping |
+| `resources/openapi/openapi.json` | An OpenAPI 3.1 document whose parity with the routes is a test |
 
-- Fully compatible with **Laravel 13**, **PHP 8.5**, and **Pest 5**.
-- Built following the domain-driven design guidelines of the Liberu architecture.
-- Reusable, presenting a clean public contract and boundaries.
-- Adheres to the strict database, security, and authorization standards of Liberu.
+## What it does not own
 
-## Requirements
+- **The events.** A caller hands in a name, a cause, a subject and already-serialised bytes. This
+  package never builds a payload, never names an order and never touches money.
+- **Delivery.** `commerce_extensions.transport` stays unbound; a host binds its own egress.
+- **Which PHP boots.** An extension here is a data record, not a service provider.
+  `liberusoftware/module-manager` remains the only registrar, and the epic's words
+  "install/update/uninstall" invite exactly the mistake ADR 0011 was written to prevent.
 
-- **PHP 8.5**
-- **Composer 2**
-- A supported database (e.g. MySQL, PostgreSQL, SQLite)
+## The one fact that shaped it
 
-## Quick start
+**A signing secret exists outside the module for exactly one response.** Both columns are encrypted
+at rest and hidden, and no query returns one, so `POST /endpoints` and
+`POST /endpoints/{endpoint}/secret-rotations` are the only places it can ever be published. A surface
+that failed to publish it there would have destroyed it, and the only recovery would be another
+rotation.
 
-To install this package via Composer, run:
+That is also why there is **no idempotency key** and why a duplicate endpoint is a `409` rather than
+the endpoint that already exists: serving a retry would mean this package had stored a one-time secret
+in order to hand it out twice.
 
-```bash
-composer require liberusoftware/module-ecommerce-commerce-extensions-api
+## Abilities
+
+| Ability | Reaches |
+| --- | --- |
+| `commerce-extensions:read` | Extensions, endpoints, event names, the delivery log and its attempts |
+| `commerce-extensions:manage` | Registering, retiring, subscribing, issuing and rotating a secret |
+| `commerce-extensions:raise` | Raising one event — the only ability that may name a subject |
+| `commerce-extensions:deliver` | The due list, and attempting one delivery |
+
+The line that matters runs between `manage` and `raise`: a credential embedded in an order service
+must not be able to point every merchant event at a destination of its own.
+
+## What it publishes
+
+| | |
+| --- | --- |
+| `GET/POST /extensions`, `PUT/DELETE /extensions/{id}/retirement` | Registering and retiring a third party |
+| `GET/POST /endpoints`, `PUT/DELETE /endpoints/{id}/retirement` | Where it receives |
+| `POST /endpoints/{id}/secret-rotations`, `DELETE /endpoints/{id}/previous-secret` | The secret, and closing a rotation overlap |
+| `POST /endpoints/{id}/subscriptions`, `DELETE /endpoints/{id}/subscriptions/{name}` | What it receives |
+| `GET/POST /event-names` | What may be subscribed to at all |
+| `POST /events` | The fan-out |
+| `GET /deliveries`, `GET /deliveries/{id}`, `GET /deliveries/due`, `POST /deliveries/{id}/attempts` | The log, and the one verb that acts on it |
+
+There is **no delete anywhere**: retirement is a dated fact on a sub-resource, because deleting an
+extension or an endpoint would take the record of what it received with it.
+
+There is **no privacy endpoint and no retention endpoint**, and both absences are decisions —
+`docs/domain.md` §8 says why, and what would change either.
+
+## Installing
+
 ```
+composer require liberusoftware/ecommerce-commerce-extensions-api
+```
+
+Nothing boots on install: `extra.laravel.providers` is absent on purpose and the host's module
+manager registers the provider only when the module is named in `MODULES_ENABLED`. See
+`docs/adoption.md`.
 
 ## Documentation
 
-- [Liberu Main Documentation](https://github.com/liberusoftware/documentation)
-- [Architecture & Standards Index](https://github.com/liberusoftware/documentation/tree/main/architecture)
-
-## Related Liberu Projects
-
-| Project | Repository | Purpose |
-| --- | --- | --- |
-| **Boilerplate** | [liberusoftware/boilerplate-laravel](https://github.com/liberusoftware/boilerplate-laravel) | Shared Laravel application foundation and reference composition |
-| **CMS** | [liberu-cms/cms-laravel](https://github.com/liberu-cms/cms-laravel) | Structured content, publishing, media, multisite, and headless delivery |
-| **CRM** | [liberu-crm/crm-laravel](https://github.com/liberu-crm/crm-laravel) | Customer data, sales, marketing, service, and customer success |
-| **Billing** | [liberu-billing/billing-laravel](https://github.com/liberu-billing/billing-laravel) | Products, subscriptions, invoicing, payments, and provisioning |
-| **Accounting** | [liberu-accounting/accounting-laravel](https://github.com/liberu-accounting/accounting-laravel) | Ledgers, banking, tax, expenses, close, and financial reporting |
-| **Ecommerce** | [liberu-ecommerce/ecommerce-laravel](https://github.com/liberu-ecommerce/ecommerce-laravel) | Catalog, checkout, orders, fulfillment, returns, B2B, and omnichannel commerce |
-| **Control Panel** | [liberu-control-panel/control-panel-laravel](https://github.com/liberu-control-panel/control-panel-laravel) | Hosting, infrastructure, DNS, mail, databases, backups, and security operations |
-| **Automation** | [liberu-automation/automation-laravel](https://github.com/liberu-automation/automation-laravel) | Governed workflows, provider-neutral AI, approvals, and connectors |
-
-## Security
-
-Please do not report security vulnerabilities through public GitHub issues.
-Follow our [Security Policy](https://github.com/liberusoftware/documentation/blob/main/architecture/SECURITY.md) for private reporting and supported versions.
-
-## License
-
-This project is open-source software. You may use, modify, and distribute it
-under the terms described in [LICENSE.md](LICENSE.md).
-
-The linked license text is authoritative; this summary is not legal advice.
-
-## Feedback and contributing
-
-Feedback and contributions are welcome. You can help by reporting reproducible
-bugs, proposing focused enhancements, improving documentation or translations,
-and submitting tested code changes.
-
-Before contributing, please read [CONTRIBUTING.md](https://github.com/liberusoftware/documentation/blob/main/standards/CONTRIBUTING.md) and our
-[Code of Conduct](https://github.com/liberusoftware/documentation/blob/main/architecture/CODE_OF_CONDUCT.md). Search existing issues first, then use
-the appropriate issue template. Pull requests should explain the problem and
-approach, remain focused, include or update tests, pass the required workflows,
-and document user-visible or breaking changes.
-
-## Contributors
-
-Thank you to everyone who helps improve Liberu.
-
-<a href="https://github.com/liberusoftware/module-ecommerce-commerce-extensions-api/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=liberusoftware/module-ecommerce-commerce-extensions-api" alt="Contributors to liberusoftware/module-ecommerce-commerce-extensions-api">
-</a>
-
-[View the full contributors graph](https://github.com/liberusoftware/module-ecommerce-commerce-extensions-api/graphs/contributors).
+| | |
+| --- | --- |
+| `docs/domain.md` | What this surface publishes and every decision behind it |
+| `docs/adoption.md` | What a host binds, issues and schedules |
+| `docs/runbook.md` | What breaks, what the symptom looks like, what to do |
