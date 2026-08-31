@@ -1,0 +1,1897 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Commerce Extensions API",
+        "version": "0.1.0",
+        "summary": "Registering a third party that receives a merchant's events, the endpoints and one-time signing secrets it holds, what it subscribes to, raising an event and attempting a delivery.",
+        "description": "An HTTP adapter over `liberusoftware/ecommerce-commerce-extensions`. It holds no business rules: every decision is the domain's.\n\nThe merchant is derived from the credential and appears in no path, query string or body. A reference belonging to another merchant and one nobody ever minted are one answer with one status and one body.\n\nA signing secret exists outside the module for exactly one response, the one that issues it. Nothing reads one back.\n\n**There is no privacy endpoint.** The domain's export and erasure both span every merchant on the deployment, deliberately, because a person is a customer of whichever merchants they choose; this surface holds one merchant's credential, so publishing either would let that merchant read another's payloads or destroy another's delivery log. **There is no retention endpoint**: pruning settled deliveries runs from the module's own scheduled command. **There is no manifest, install, update, uninstall, scope grant, rollback, health model or UI-extension registry**, because the domain publishes none \u2014 an extension here is a data record, and module-manager remains the only thing that decides which code boots.",
+        "license": {
+            "name": "MIT"
+        }
+    },
+    "tags": [
+        {
+            "name": "Extensions",
+            "description": "A merchant's registration of a third party that receives events."
+        },
+        {
+            "name": "Endpoints",
+            "description": "Where an extension receives, and the secret its requests are signed with."
+        },
+        {
+            "name": "Event names",
+            "description": "What an endpoint may subscribe to at all."
+        },
+        {
+            "name": "Subscriptions",
+            "description": "Which registered names an endpoint receives."
+        },
+        {
+            "name": "Events",
+            "description": "Raising one event to everything subscribed to it."
+        },
+        {
+            "name": "Deliveries",
+            "description": "What is owed, what was sent, and what came back."
+        }
+    ],
+    "paths": {
+        "/extensions": {
+            "get": {
+                "operationId": "listExtensions",
+                "summary": "List registered extensions",
+                "description": "Every third party this merchant has registered. `live=1` narrows to those not retired.",
+                "tags": [
+                    "Extensions"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:read"
+                        ]
+                    }
+                ],
+                "parameters": [
+                    {
+                        "$ref": "#/components/parameters/Page"
+                    },
+                    {
+                        "$ref": "#/components/parameters/PerPage"
+                    },
+                    {
+                        "name": "live",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of results.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data",
+                                        "meta"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/Extension"
+                                            }
+                                        },
+                                        "meta": {
+                                            "$ref": "#/components/schemas/PageMeta"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/Unprocessable"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "registerExtension",
+                "summary": "Register an extension",
+                "description": "Records a third party that may receive this merchant's events. It is a data record and never a PHP service provider: nothing here installs, updates or uninstalls code. The reference is unique per merchant and the database index is the arbiter, so a duplicate is 409 and there is no idempotency key over the top of it.",
+                "tags": [
+                    "Extensions"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:manage"
+                        ]
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RegisterExtensionRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "The extension, as registered.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/Extension"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "409": {
+                        "$ref": "#/components/responses/Conflict"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/Unprocessable"
+                    }
+                }
+            }
+        },
+        "/extensions/{extension}/retirement": {
+            "parameters": [
+                {
+                    "$ref": "#/components/parameters/ExtensionId"
+                }
+            ],
+            "put": {
+                "operationId": "retireExtension",
+                "summary": "Retire an extension",
+                "description": "Silences a partner without deleting the evidence of what it received. Idempotent: retiring twice keeps the instant of the first. There is no verb that deletes an extension, because deleting one would take its delivery log with it.",
+                "tags": [
+                    "Extensions"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:manage"
+                        ]
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The extension, retired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/Extension"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/NotFound"
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "reinstateExtension",
+                "summary": "Reinstate a retired extension",
+                "description": "Clears the retirement. Without this a mis-clicked retirement is permanent, because the natural key refuses a re-registration.",
+                "tags": [
+                    "Extensions"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:manage"
+                        ]
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The extension, live again.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/Extension"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/NotFound"
+                    }
+                }
+            }
+        },
+        "/endpoints": {
+            "get": {
+                "operationId": "listEndpoints",
+                "summary": "List endpoints",
+                "description": "Every URL this merchant's extensions receive at. No secret appears in this response or in any other, except the two that issue one.",
+                "tags": [
+                    "Endpoints"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:read"
+                        ]
+                    }
+                ],
+                "parameters": [
+                    {
+                        "$ref": "#/components/parameters/Page"
+                    },
+                    {
+                        "$ref": "#/components/parameters/PerPage"
+                    },
+                    {
+                        "name": "extension",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of results.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data",
+                                        "meta"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/Endpoint"
+                                            }
+                                        },
+                                        "meta": {
+                                            "$ref": "#/components/schemas/PageMeta"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/Unprocessable"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "addEndpoint",
+                "summary": "Add an endpoint and issue its signing secret",
+                "description": "Registers a URL under an extension and mints its signing secret. **The secret is in this response and in no other.** Both columns are encrypted at rest and hidden, and no query returns one, so a caller that loses this response has to rotate. Registering the same URL twice under one extension is 409 rather than the endpoint that exists: answering the retry would mean this surface had stored a one-time secret in order to hand it out twice.",
+                "tags": [
+                    "Endpoints"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:manage"
+                        ]
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AddEndpointRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "The endpoint's identifier and its signing secret, returned once.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/IssuedSecret"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/NotFound"
+                    },
+                    "409": {
+                        "$ref": "#/components/responses/Conflict"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/Unprocessable"
+                    }
+                }
+            }
+        },
+        "/endpoints/{endpoint}/retirement": {
+            "parameters": [
+                {
+                    "$ref": "#/components/parameters/EndpointId"
+                }
+            ],
+            "put": {
+                "operationId": "retireEndpoint",
+                "summary": "Retire an endpoint",
+                "description": "Stops delivery to this URL without deleting its history. Idempotent.",
+                "tags": [
+                    "Endpoints"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:manage"
+                        ]
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The endpoint, retired.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/Endpoint"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/NotFound"
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "reinstateEndpoint",
+                "summary": "Reinstate a retired endpoint",
+                "description": "Clears the retirement.",
+                "tags": [
+                    "Endpoints"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:manage"
+                        ]
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The endpoint, live again.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/Endpoint"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/NotFound"
+                    }
+                }
+            }
+        },
+        "/endpoints/{endpoint}/secret-rotations": {
+            "parameters": [
+                {
+                    "$ref": "#/components/parameters/EndpointId"
+                }
+            ],
+            "post": {
+                "operationId": "rotateSecret",
+                "summary": "Rotate an endpoint's signing secret",
+                "description": "Mints a new secret and keeps the previous one live for a bounded overlap, during which every request carries a signature under each, so a receiver that has not picked the new one up keeps verifying. **The new secret is in this response and in no other.** 200 rather than 201: a rotation creates nothing addressable, and a Location header pointing at a secret is the one header this module must never write.",
+                "tags": [
+                    "Endpoints"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:manage"
+                        ]
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The new signing secret and when the previous one expires.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/IssuedSecret"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/NotFound"
+                    }
+                }
+            }
+        },
+        "/endpoints/{endpoint}/previous-secret": {
+            "parameters": [
+                {
+                    "$ref": "#/components/parameters/EndpointId"
+                }
+            ],
+            "delete": {
+                "operationId": "expirePreviousSecret",
+                "summary": "Expire a rotated-out secret early",
+                "description": "Closes the rotation overlap now, for the leak that cannot wait for the window. 409 when there is no previous secret to expire.",
+                "tags": [
+                    "Endpoints"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:manage"
+                        ]
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The endpoint, with no overlap open.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/Endpoint"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/NotFound"
+                    },
+                    "409": {
+                        "$ref": "#/components/responses/Conflict"
+                    }
+                }
+            }
+        },
+        "/endpoints/{endpoint}/subscriptions": {
+            "parameters": [
+                {
+                    "$ref": "#/components/parameters/EndpointId"
+                }
+            ],
+            "post": {
+                "operationId": "subscribe",
+                "summary": "Subscribe an endpoint to an event name",
+                "description": "The name must already be registered for this merchant. An unregistered name is 422 and never a subscription that quietly matches nothing: a typo and a dead integration have to be told apart on the day the endpoint is configured.",
+                "tags": [
+                    "Subscriptions"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:manage"
+                        ]
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SubscribeRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "The subscription.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/Subscription"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/NotFound"
+                    },
+                    "409": {
+                        "$ref": "#/components/responses/Conflict"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/Unprocessable"
+                    }
+                }
+            }
+        },
+        "/endpoints/{endpoint}/subscriptions/{eventName}": {
+            "parameters": [
+                {
+                    "$ref": "#/components/parameters/EndpointId"
+                },
+                {
+                    "$ref": "#/components/parameters/EventNameSegment"
+                }
+            ],
+            "delete": {
+                "operationId": "unsubscribe",
+                "summary": "Release a subscription",
+                "description": "404 when no such subscription was held, which is the same answer as an endpoint belonging to another merchant. A silent 204 would make a mistyped name look like success.",
+                "tags": [
+                    "Subscriptions"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:manage"
+                        ]
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "The subscription was released."
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/NotFound"
+                    }
+                }
+            }
+        },
+        "/event-names": {
+            "get": {
+                "operationId": "listEventNames",
+                "summary": "List the event-name registry",
+                "description": "What this merchant's endpoints may subscribe to at all.",
+                "tags": [
+                    "Event names"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:read"
+                        ]
+                    }
+                ],
+                "parameters": [
+                    {
+                        "$ref": "#/components/parameters/Page"
+                    },
+                    {
+                        "$ref": "#/components/parameters/PerPage"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of results.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data",
+                                        "meta"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/EventName"
+                                            }
+                                        },
+                                        "meta": {
+                                            "$ref": "#/components/schemas/PageMeta"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/Unprocessable"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "registerEventName",
+                "summary": "Register an event name",
+                "description": "Adds a name to this merchant's registry. The module never learns what a name means; it only refuses one nobody registered.",
+                "tags": [
+                    "Event names"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:manage"
+                        ]
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RegisterEventNameRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "The registered name.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/EventName"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "409": {
+                        "$ref": "#/components/responses/Conflict"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/Unprocessable"
+                    }
+                }
+            }
+        },
+        "/events": {
+            "post": {
+                "operationId": "raiseEvent",
+                "summary": "Raise an event",
+                "description": "Fans one event out to every live endpoint this merchant has subscribed to that name, as one indexed query scoped to the merchant. The caller hands in a name, a cause, a subject and already-serialised bytes; the module never builds a payload and never learns what any of them mean.\n\n**201** when at least one delivery was newly raised. **200** when every one came back `already_raised`: the cause reference is the natural key, so the same cause for the same subject is a replay and nothing was created. **409** when the same cause is already held on an endpoint by a *different* subject \u2014 never that subject's row handed to this caller. **200 with an empty list** when nobody subscribes, which is a success and not an error.\n\nThere is no idempotency key: the cause reference already is one, the database enforces it, and a key a client holds is a key a client can change.\n\nThis is the only endpoint that may name a subject, because the cause of an event is outside this module and so is the person it concerns.",
+                "tags": [
+                    "Events"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:raise"
+                        ]
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RaiseEventRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "One entry per endpoint the event was owed to. Empty when nothing subscribes.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/RaisedDelivery"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "201": {
+                        "description": "One entry per endpoint, at least one of them newly raised.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/RaisedDelivery"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "$ref": "#/components/responses/Conflict"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/Unprocessable"
+                    }
+                }
+            }
+        },
+        "/deliveries": {
+            "get": {
+                "operationId": "listDeliveries",
+                "summary": "List the delivery log",
+                "description": "Every event owed to or already sent to this merchant's endpoints, newest first. Neither the stored payload nor the subject reference appears here; both are on the single-delivery read.",
+                "tags": [
+                    "Deliveries"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:read"
+                        ]
+                    }
+                ],
+                "parameters": [
+                    {
+                        "$ref": "#/components/parameters/Page"
+                    },
+                    {
+                        "$ref": "#/components/parameters/PerPage"
+                    },
+                    {
+                        "name": "endpoint",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        }
+                    },
+                    {
+                        "name": "outcome",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "delivered",
+                                "abandoned",
+                                "redacted"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "A page of results.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data",
+                                        "meta"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/Delivery"
+                                            }
+                                        },
+                                        "meta": {
+                                            "$ref": "#/components/schemas/PageMeta"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/Unprocessable"
+                    }
+                }
+            }
+        },
+        "/deliveries/due": {
+            "get": {
+                "operationId": "listDueDeliveries",
+                "summary": "List deliveries due to be attempted",
+                "description": "What a worker asks for: one indexed, bounded query per merchant. An unsettled delivery always carries a next attempt no later than its own expiry, so this also picks up the deliveries that are due only to be abandoned.",
+                "tags": [
+                    "Deliveries"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:deliver"
+                        ]
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 500,
+                            "default": 100
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The deliveries due now, oldest first.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/Delivery"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "422": {
+                        "$ref": "#/components/responses/Unprocessable"
+                    }
+                }
+            }
+        },
+        "/deliveries/{delivery}": {
+            "parameters": [
+                {
+                    "$ref": "#/components/parameters/DeliveryId"
+                }
+            ],
+            "get": {
+                "operationId": "showDelivery",
+                "summary": "Read one delivery and every attempt at it",
+                "description": "The bytes that were sent, the subject the event concerned, and each attempt in order \u2014 what went out, what came back and how long it took.",
+                "tags": [
+                    "Deliveries"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:read"
+                        ]
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The delivery and its attempts.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/DeliveryDetail"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/NotFound"
+                    }
+                }
+            }
+        },
+        "/deliveries/{delivery}/attempts": {
+            "parameters": [
+                {
+                    "$ref": "#/components/parameters/DeliveryId"
+                }
+            ],
+            "post": {
+                "operationId": "attemptDelivery",
+                "summary": "Attempt one delivery",
+                "description": "Signs the stored payload under every live secret and hands it to the bound transport. The attempt row is written **before** the request and settled after it, so a worker killed mid-flight leaves an unsettled attempt rather than no evidence at all.\n\n**200 for every report, refusals included.** Nothing bound to send with, a retired endpoint or extension, a destination that now resolves into private space, a closed window, another worker already holding the sequence: each is a recorded fact with a reason, not a failure of this request. Branch on `outcome` and `refusal_reason`. A refusal consumes no slot under the retry schedule, so binding a transport later does not find the delivery exhausted.\n\n**409** when the delivery has already settled. There is no verb that reopens one: raise the event again under a new cause reference.",
+                "tags": [
+                    "Deliveries"
+                ],
+                "security": [
+                    {
+                        "bearer": [
+                            "commerce-extensions:deliver"
+                        ]
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "What the attempt did, including why nothing went out.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/components/schemas/AttemptReport"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Unauthenticated"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/InsufficientScope"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/NotFound"
+                    },
+                    "409": {
+                        "$ref": "#/components/responses/Conflict"
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "bearer": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": "A token carrying the abilities this document names. The merchant is a property of the token."
+            }
+        },
+        "parameters": {
+            "ExtensionId": {
+                "name": "extension",
+                "in": "path",
+                "required": true,
+                "schema": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            },
+            "EndpointId": {
+                "name": "endpoint",
+                "in": "path",
+                "required": true,
+                "schema": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            },
+            "DeliveryId": {
+                "name": "delivery",
+                "in": "path",
+                "required": true,
+                "schema": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            },
+            "EventNameSegment": {
+                "name": "eventName",
+                "in": "path",
+                "required": true,
+                "schema": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9._-]+$"
+                }
+            },
+            "Page": {
+                "name": "page",
+                "in": "query",
+                "required": false,
+                "schema": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1
+                }
+            },
+            "PerPage": {
+                "name": "per_page",
+                "in": "query",
+                "required": false,
+                "schema": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 200,
+                    "default": 50
+                }
+            }
+        },
+        "responses": {
+            "Unauthenticated": {
+                "description": "No authenticated actor.",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/Error"
+                        }
+                    }
+                }
+            },
+            "InsufficientScope": {
+                "description": "The credential carries no such ability, cannot answer an ability question, or names no merchant.",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/Error"
+                        }
+                    }
+                }
+            },
+            "NotFound": {
+                "description": "No such record exists for this credential. A reference belonging to another merchant and one nobody ever minted are one answer with one body.",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/Error"
+                        }
+                    }
+                }
+            },
+            "Conflict": {
+                "description": "A decision already made. Asking again will not change it.",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/Error"
+                        }
+                    }
+                }
+            },
+            "Unprocessable": {
+                "description": "Input the caller can correct.",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/Error"
+                        }
+                    }
+                }
+            }
+        },
+        "schemas": {
+            "Error": {
+                "type": "object",
+                "required": [
+                    "error"
+                ],
+                "properties": {
+                    "error": {
+                        "type": "object",
+                        "required": [
+                            "code",
+                            "message",
+                            "resubmittable"
+                        ],
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "description": "A stable identifier for the refusal. Branch on this, never on the message."
+                            },
+                            "message": {
+                                "type": "string",
+                                "description": "Written by this package. No domain exception message is ever rendered to a caller."
+                            },
+                            "resubmittable": {
+                                "type": "boolean",
+                                "description": "True when nothing was written and correcting the input is the whole remedy. False means the decision will not change by being asked again."
+                            },
+                            "fields": {
+                                "type": "object",
+                                "description": "Present only on a validation failure, keyed by input field.",
+                                "additionalProperties": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "PageMeta": {
+                "type": "object",
+                "required": [
+                    "page",
+                    "per_page",
+                    "has_more"
+                ],
+                "properties": {
+                    "page": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "per_page": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "has_more": {
+                        "type": "boolean",
+                        "description": "Whether a further page exists. There is no total: a count over the delivery log is a table scan no caller here needs."
+                    }
+                }
+            },
+            "Extension": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "extension_ref",
+                    "name",
+                    "retired_at",
+                    "live"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "extension_ref": {
+                        "type": "string",
+                        "description": "The merchant's own opaque reference for the third party. This module never resolves it."
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "retired_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time",
+                        "description": "A dated fact, not a status column. Null means live."
+                    },
+                    "live": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "Endpoint": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "extension_id",
+                    "url",
+                    "retired_at",
+                    "live",
+                    "previous_secret_expires_at"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "extension_id": {
+                        "type": "integer"
+                    },
+                    "url": {
+                        "type": "string",
+                        "format": "uri"
+                    },
+                    "retired_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "live": {
+                        "type": "boolean"
+                    },
+                    "previous_secret_expires_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time",
+                        "description": "When a rotated-out secret stops being accepted. Null means there is no overlap open."
+                    }
+                }
+            },
+            "EventName": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "name",
+                    "description"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "Subscription": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "endpoint_id",
+                    "event_name"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "endpoint_id": {
+                        "type": "integer"
+                    },
+                    "event_name": {
+                        "type": "string"
+                    }
+                }
+            },
+            "Delivery": {
+                "type": "object",
+                "description": "One event owed to one endpoint. Neither the stored payload nor the subject reference appears here: both are on the single-delivery read only.",
+                "required": [
+                    "id",
+                    "delivery_ref",
+                    "event_name",
+                    "cause_ref",
+                    "endpoint_id",
+                    "extension_id",
+                    "raised_at",
+                    "expires_at",
+                    "next_attempt_at",
+                    "settled_at",
+                    "settled",
+                    "outcome",
+                    "redacted_at",
+                    "attempt_count"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "delivery_ref": {
+                        "type": "string",
+                        "description": "What the receiver sees in X-Liberu-Delivery, and what ties every attempt of this event to this endpoint together."
+                    },
+                    "event_name": {
+                        "type": "string"
+                    },
+                    "cause_ref": {
+                        "type": "string",
+                        "description": "The caller's reference for the occurrence that caused this. It is the natural key."
+                    },
+                    "endpoint_id": {
+                        "type": "integer"
+                    },
+                    "extension_id": {
+                        "type": "integer"
+                    },
+                    "raised_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "expires_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "The single bound on retrying. There is no attempt cap."
+                    },
+                    "next_attempt_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time",
+                        "description": "Null once the delivery has settled."
+                    },
+                    "settled_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time"
+                    },
+                    "settled": {
+                        "type": "boolean"
+                    },
+                    "outcome": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "delivered",
+                            "abandoned",
+                            "redacted",
+                            null
+                        ],
+                        "description": "Null means the delivery is still owed, which is **not** the same as having no outcome. `settled` says which."
+                    },
+                    "redacted_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time",
+                        "description": "When erasure reached this delivery. The arithmetic survives; the bytes do not."
+                    },
+                    "attempt_count": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "DeliveryDetail": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/Delivery"
+                    },
+                    {
+                        "type": "object",
+                        "required": [
+                            "subject_ref",
+                            "payload",
+                            "attempts"
+                        ],
+                        "properties": {
+                            "subject_ref": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "description": "An opaque reference the caller supplied. Null once erasure has redacted it."
+                            },
+                            "payload": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "description": "The bytes the caller serialised. This module never built them and cannot read them. Null once erasure has removed them."
+                            },
+                            "attempts": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/Attempt"
+                                }
+                            }
+                        }
+                    }
+                ]
+            },
+            "Attempt": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "sequence",
+                    "attempted_at",
+                    "settled_at",
+                    "outcome",
+                    "refusal_reason",
+                    "response_status",
+                    "transport_completed",
+                    "excerpt",
+                    "duration_ms"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "sequence": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "description": "Null for a refusal, which consumes no slot under the retry schedule."
+                    },
+                    "attempted_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "Written before the request goes out."
+                    },
+                    "settled_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time",
+                        "description": "Null means a worker died mid-request."
+                    },
+                    "outcome": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "delivered",
+                            "failed",
+                            "refused"
+                        ]
+                    },
+                    "refusal_reason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "no_transport_bound",
+                            "extension_retired",
+                            "endpoint_retired",
+                            "destination_not_https",
+                            "destination_not_public",
+                            "concurrent_attempt",
+                            "window_closed",
+                            null
+                        ]
+                    },
+                    "response_status": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "transport_completed": {
+                        "type": "boolean",
+                        "description": "Whether the request finished. False with an excerpt present means the excerpt is an exception message and **not** a response body, which is why the field is not called `response`."
+                    },
+                    "excerpt": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "description": "A bounded slice of what came back, truncated at the write."
+                    },
+                    "duration_ms": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "IssuedSecret": {
+                "type": "object",
+                "description": "The one shape in this document carrying a signing secret. Nothing reads one back.",
+                "required": [
+                    "endpoint_id",
+                    "secret",
+                    "previous_secret_expires_at"
+                ],
+                "properties": {
+                    "endpoint_id": {
+                        "type": "integer"
+                    },
+                    "secret": {
+                        "type": "string",
+                        "description": "Returned exactly once, here. Both columns are encrypted at rest and hidden, and no query returns one, so a caller that loses this response has to rotate."
+                    },
+                    "previous_secret_expires_at": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "date-time",
+                        "description": "When the secret this one replaced stops being accepted. Null on a first issue. During the overlap every request is signed under both."
+                    }
+                }
+            },
+            "RaisedDelivery": {
+                "type": "object",
+                "required": [
+                    "delivery_id",
+                    "endpoint_id",
+                    "delivery_ref",
+                    "already_raised"
+                ],
+                "properties": {
+                    "delivery_id": {
+                        "type": "integer"
+                    },
+                    "endpoint_id": {
+                        "type": "integer"
+                    },
+                    "delivery_ref": {
+                        "type": "string"
+                    },
+                    "already_raised": {
+                        "type": "boolean",
+                        "description": "True when this cause and subject were raised before. A replay creates nothing, so the whole response is 200."
+                    }
+                }
+            },
+            "AttemptReport": {
+                "type": "object",
+                "required": [
+                    "delivery_id",
+                    "attempt_id",
+                    "sequence",
+                    "outcome",
+                    "refusal_reason",
+                    "response_status",
+                    "delivery_settled",
+                    "delivery_outcome"
+                ],
+                "properties": {
+                    "delivery_id": {
+                        "type": "integer"
+                    },
+                    "attempt_id": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ],
+                        "description": "Null only for `concurrent_attempt`, which is the one refusal that writes no row."
+                    },
+                    "sequence": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "outcome": {
+                        "type": "string",
+                        "enum": [
+                            "pending",
+                            "delivered",
+                            "failed",
+                            "refused"
+                        ]
+                    },
+                    "refusal_reason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "no_transport_bound",
+                            "extension_retired",
+                            "endpoint_retired",
+                            "destination_not_https",
+                            "destination_not_public",
+                            "concurrent_attempt",
+                            "window_closed",
+                            null
+                        ],
+                        "description": "Why nothing went out. Render it. A refusal is a recorded fact, not a failure of the request that reported it."
+                    },
+                    "response_status": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "delivery_settled": {
+                        "type": "boolean"
+                    },
+                    "delivery_outcome": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "enum": [
+                            "delivered",
+                            "abandoned",
+                            "redacted",
+                            null
+                        ],
+                        "description": "Null means the delivery is still owed, which is **not** the same as having no outcome."
+                    }
+                }
+            },
+            "RegisterExtensionRequest": {
+                "type": "object",
+                "required": [
+                    "extension_ref",
+                    "name"
+                ],
+                "properties": {
+                    "extension_ref": {
+                        "type": "string",
+                        "maxLength": 128,
+                        "description": "The merchant's own opaque reference. Unique per merchant, and the database is the arbiter."
+                    },
+                    "name": {
+                        "type": "string",
+                        "maxLength": 191
+                    }
+                }
+            },
+            "AddEndpointRequest": {
+                "type": "object",
+                "required": [
+                    "extension_id",
+                    "url"
+                ],
+                "properties": {
+                    "extension_id": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "url": {
+                        "type": "string",
+                        "format": "uri",
+                        "maxLength": 1024,
+                        "description": "Must be https and must not resolve into private or reserved address space. Checked here and again at the moment of sending, because the first answer is only true of the DNS that existed then."
+                    }
+                }
+            },
+            "RegisterEventNameRequest": {
+                "type": "object",
+                "required": [
+                    "name"
+                ],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 128
+                    },
+                    "description": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 191
+                    }
+                }
+            },
+            "SubscribeRequest": {
+                "type": "object",
+                "required": [
+                    "event_name"
+                ],
+                "properties": {
+                    "event_name": {
+                        "type": "string",
+                        "maxLength": 128,
+                        "description": "Must already be registered for this merchant. An unregistered name is a refusal, never a subscription that matches nothing."
+                    }
+                }
+            },
+            "RaiseEventRequest": {
+                "type": "object",
+                "required": [
+                    "event_name",
+                    "cause_ref",
+                    "payload"
+                ],
+                "properties": {
+                    "event_name": {
+                        "type": "string",
+                        "maxLength": 128
+                    },
+                    "cause_ref": {
+                        "type": "string",
+                        "maxLength": 128,
+                        "description": "The caller's reference for the occurrence. It is the natural key: the same cause and subject is a replay, and the same cause for a different subject is refused."
+                    },
+                    "subject_ref": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "maxLength": 128,
+                        "description": "An opaque reference for the person the event concerns. The only caller-supplied subject on this surface."
+                    },
+                    "payload": {
+                        "type": "string",
+                        "description": "Already serialised by the caller. This module never builds a payload, never reads a domain model and never touches money."
+                    }
+                }
+            }
+        }
+    }
+}
