@@ -1,0 +1,30 @@
+{
+    "name": "ecommerce-commerce-extensions-api",
+    "version": "0.1.0",
+    "description": "HTTP adapter over Commerce Extensions: extensions, endpoints, one-time signing secrets, subscriptions, raising an event and attempting a delivery.",
+    "category": "adapter",
+    "provider": "Liberu\\Ecommerce\\CommerceExtensions\\Api\\CommerceExtensionsApiServiceProvider",
+    "requires": {
+        "packages": {
+            "liberusoftware/ecommerce-commerce-extensions": "^0.1"
+        }
+    },
+    "features": [
+        "The merchant is derived from the credential and is never accepted in a path, a query string or a body",
+        "A signing secret is returned exactly once, in the response that issues it, because nothing in the module can read one back",
+        "No idempotency key anywhere: every write has a natural key the database enforces, and serving a retry of an issue would mean storing a one-time secret",
+        "A reference belonging to another merchant and one nobody ever minted are the same 404, with the same body",
+        "Raising the same cause for the same subject answers 200 with already_raised, and raising it for a different subject answers 409 rather than another subject's row",
+        "An event nobody subscribes to is an empty list and a success, never an error",
+        "A delivery refusal is rendered with its reason at 200, because the module records a refusal as a row rather than raising it",
+        "A delivery outcome of null means the delivery is still owed, and the payload says so as a field rather than leaving a caller to guess",
+        "An attempt excerpt is labelled by whether the transport completed, because an excerpt with no status is an exception message and not a response body",
+        "The clock is read once per request in the base controller, so every dated fact one request writes agrees",
+        "A delivery listing publishes neither the stored payload nor the subject reference; both are on the single-delivery read only",
+        "Four abilities: reading, configuring, raising an event and delivering one, so the service that raises events cannot point them somewhere else",
+        "Only the raise ability may name a subject, enforced in the base controller rather than by review",
+        "Every route is documented in an OpenAPI 3.1 document whose parity with the route table and with the enforced abilities is a test",
+        "No privacy endpoint: the module's only export and erasure verbs span every merchant, and this surface holds one merchant's credential",
+        "No retention endpoint: pruning the delivery log runs from the module's own scheduled command, not from an HTTP verb"
+    ]
+}

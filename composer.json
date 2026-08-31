@@ -1,0 +1,60 @@
+{
+    "name": "liberusoftware/ecommerce-commerce-extensions-api",
+    "description": "HTTP adapter over Commerce Extensions: registering a third party that receives events, the endpoints and one-time signing secrets it holds, what it subscribes to, raising an event to it and every attempt to deliver one.",
+    "type": "liberu-module",
+    "license": "MIT",
+    "version": "0.1.0",
+    "keywords": [
+        "laravel",
+        "ecommerce",
+        "commerce-extensions",
+        "webhooks",
+        "api",
+        "liberu"
+    ],
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/liberusoftware/module-ecommerce-commerce-extensions"
+        }
+    ],
+    "require": {
+        "php": "^8.5",
+        "illuminate/config": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/database": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/routing": "^13.0",
+        "illuminate/support": "^13.0",
+        "illuminate/validation": "^13.0",
+        "liberusoftware/ecommerce-commerce-extensions": "^0.1",
+        "nesbot/carbon": "^3.8.4"
+    },
+    "require-dev": {
+        "liberusoftware/package-testbench": "^1.7",
+        "pestphp/pest": "^5.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Liberu\\Ecommerce\\CommerceExtensions\\Api\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Liberu\\Ecommerce\\CommerceExtensions\\Api\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "liberu": {
+            "name": "ecommerce-commerce-extensions-api"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

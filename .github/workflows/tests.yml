@@ -1,0 +1,16 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: liberusoftware/.github/.github/workflows/package-tests.yml@main
+    with:
+      phpstan-level: 10
+      coverage-threshold: 100
