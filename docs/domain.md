@@ -131,6 +131,15 @@ only. The payload is opaque bytes a caller chose and may be anything — the hos
 put a customer's email address in one — and a listing is the shape that gets logged, cached and
 pasted into a ticket.
 
+### Paging adds a tiebreaker the domain's ordering does not have
+
+`ListExtensions` orders by name and `ListDeliveries` by the instant an event was raised, and neither
+is a **total** order: two extensions may share a name, and one raise fans out to every subscribed
+endpoint at the same instant. Paging over a non-total order silently repeats one row on page two and
+drops another. Paging is this package's own concern, so the controllers add `orderBy('id')` on top of
+the domain's ordering rather than replacing it. `ListingTest` proves the union of two pages is every
+row exactly once. This is a domain gap reported rather than closed there.
+
 `has_more` rather than a total. A `COUNT(*)` over the delivery log is a table scan nobody asked for,
 and no caller here renders a page count.
 

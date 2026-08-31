@@ -40,11 +40,13 @@ final class ExtensionController extends Controller
     {
         $this->validated($request, ['live' => ['boolean']]);
 
-        return new JsonResponse($this->paged(
-            $request,
-            $extensions($this->tenantId(), $request->boolean('live')),
-            Present::extension(...),
-        ));
+        $query = $extensions($this->tenantId(), $request->boolean('live'));
+
+        // The domain orders by name, which two extensions may share. Paging
+        // over a non-total order silently repeats and drops rows.
+        $query->orderBy('id');
+
+        return new JsonResponse($this->paged($request, $query, Present::extension(...)));
     }
 
     public function store(HttpRequest $request, RegisterExtension $register): JsonResponse

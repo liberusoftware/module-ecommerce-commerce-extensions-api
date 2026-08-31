@@ -55,6 +55,11 @@ final class DeliveryController extends Controller
 
         $query->withCount('attempts');
 
+        // One raise fans out to every subscribed endpoint at the same instant,
+        // so `raised_at` alone is not a total order and paging over it would
+        // repeat and drop rows.
+        $query->orderBy('id', 'desc');
+
         return new JsonResponse($this->paged($request, $query, Present::delivery(...)));
     }
 
